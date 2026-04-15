@@ -2,7 +2,7 @@
 Program: Ship Class
 Author: Farouk Bellili
 Purpose: Manage the player ship with vertical movement.
-Starter Code: Based on classroom tutorial.
+Starter Code: chapter12.
 Date: 2026-04-14
 """
 
