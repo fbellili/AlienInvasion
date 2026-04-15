@@ -2,7 +2,7 @@
 Program: Bullet Class
 Author: Farouk Bellili
 Purpose: Manage bullets moving horizontally.
-Starter Code: Based on classroom tutorial.
+Starter Code: chapter12.
 Date: 2026-04-14
 """
 
