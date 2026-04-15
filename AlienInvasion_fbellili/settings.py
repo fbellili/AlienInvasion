@@ -2,7 +2,7 @@
 Program: Alien Invasion Settings
 Author: Farouk Bellili
 Purpose: Store all game settings.
-Starter Code: Based on classroom tutorial.
+Starter Code: chapter12.
 Date: 2026-04-14
 """
 
