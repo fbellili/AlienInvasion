@@ -1,8 +1,8 @@
 """
 Program: Alien Invasion Game
 Author: Farouk Bellili
-Purpose: A custom version of Alien Invasion with vertical ship movement and horizontal shooting.
-Starter Code: Based on classroom tutorial and textbook project.
+Purpose: Alien Invasion with vertical ship movement and horizontal shooting.
+Starter Code: chapter12.
 Date: 2026-04-14
 """
 
