@@ -1,8 +1,11 @@
 """
 Program: Alien Invasion Game
 Author: Farouk Bellili
-Purpose: Alien Invasion with vertical ship movement and horizontal shooting.
-Starter Code: chapter12.
+Purpose: Final submission — a side-scrolling Alien Invasion variant where the
+         ship sits on the left edge, moves vertically, and fires horizontally.
+         Includes a Play button, full HUD (score, high score, level, lives),
+         hidden mouse cursor during play, speed scaling, and scoring.
+Starter Code: Based on classroom tutorial and textbook project.
 Date: 2026-04-14
 """
 
@@ -14,23 +17,26 @@ from ship import Ship
 from bullet import Bullet
 from alien import Alien
 from game_stats import GameStats
+from scoreboard import Scoreboard
+from button import Button
 
 
 class AlienInvasion:
     """
     Overall class to manage game assets and behavior.
 
-    Handles the main game loop, event processing, fleet creation and
-    movement, collision detection, and loss/reset conditions for the
-    side-scrolling variant of Alien Invasion.
+    Handles the main loop, event processing, Play button, fleet creation
+    and movement, bullet/alien collisions, HUD updates, scoring, speed
+    scaling, and all loss/reset conditions for the side-scrolling variant.
     """
 
     def __init__(self):
         """
-        Initialize the game, create screen and core objects.
+        Initialize pygame, the display window, and all game objects.
 
-        Sets up pygame, the display window, settings, statistics, the
-        player ship, the bullet group, and the initial alien fleet.
+        Creates the screen, settings, stats, scoreboard, ship, bullet and
+        alien groups, the initial fleet, and the Play button. The game
+        starts in an inactive state until the player clicks Play.
         """
         pygame.init()
         self.clock = pygame.time.Clock()
@@ -41,19 +47,25 @@ class AlienInvasion:
         )
         pygame.display.set_caption("Alien Invasion")
 
+        # Stats must exist before Scoreboard so it can read from them.
         self.stats = GameStats(self)
+        self.sb = Scoreboard(self)
+
         self.ship = Ship(self)
         self.bullets = pygame.sprite.Group()
         self.aliens = pygame.sprite.Group()
 
         self._create_fleet()
 
+        # Game starts inactive — Play button must be clicked to begin.
+        self.play_button = Button(self, "Play")
+
     def run_game(self):
         """
         Start the main game loop.
 
-        Continuously checks for events, updates all game objects,
-        and redraws the screen at 60 frames per second.
+        Runs at 60 FPS. Game objects only update when the game is active;
+        the screen is always redrawn so the Play button and HUD stay visible.
         """
         while True:
             self._check_events()
@@ -72,9 +84,10 @@ class AlienInvasion:
 
     def _check_events(self):
         """
-        Respond to keypresses and window events.
+        Listen for and route all pygame events.
 
-        Delegates keydown and keyup events to their respective helpers.
+        Handles window close, keydown, keyup, and mouse click events.
+        Mouse clicks are passed to _check_play_button() for hit-testing.
         """
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -83,10 +96,15 @@ class AlienInvasion:
                 self._check_keydown_events(event)
             elif event.type == pygame.KEYUP:
                 self._check_keyup_events(event)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+                self._check_play_button(mouse_pos)
 
     def _check_keydown_events(self, event):
         """
-        Respond to keypresses.
+        Respond to keys being pressed down.
+
+        UP/DOWN arrows move the ship; SPACE fires a bullet; Q quits.
 
         Args:
             event (pygame.event.Event): The keydown event to process.
@@ -102,7 +120,9 @@ class AlienInvasion:
 
     def _check_keyup_events(self, event):
         """
-        Respond to key releases.
+        Respond to keys being released.
+
+        Stops vertical ship movement when the arrow key is released.
 
         Args:
             event (pygame.event.Event): The keyup event to process.
@@ -112,16 +132,52 @@ class AlienInvasion:
         elif event.key == pygame.K_DOWN:
             self.ship.moving_down = False
 
+    def _check_play_button(self, mouse_pos):
+        """
+        Start or restart the game when the Play button is clicked.
+
+        Only responds if the click lands on the button AND the game is
+        currently inactive, preventing accidental restarts mid-game.
+        Resets all dynamic settings, stats, and HUD; rebuilds the fleet;
+        re-centers the ship; and hides the mouse cursor.
+
+        Args:
+            mouse_pos (tuple): The (x, y) pixel position of the mouse click.
+        """
+        button_clicked = self.play_button.rect.collidepoint(mouse_pos)
+        if button_clicked and not self.stats.game_active:
+            # Reset speed settings to baseline.
+            self.settings.initialize_dynamic_settings()
+
+            # Reset stats and refresh all HUD images.
+            self.stats.reset_stats()
+            self.stats.game_active = True
+            self.sb.prep_score()
+            self.sb.prep_high_score()
+            self.sb.prep_level()
+            self.sb.prep_ships()
+
+            # Clear leftover aliens and bullets from the previous game.
+            self.aliens.empty()
+            self.bullets.empty()
+
+            # Fresh fleet and centered ship.
+            self._create_fleet()
+            self.ship.center_ship()
+
+            # Hide the cursor so it doesn't distract the player.
+            pygame.mouse.set_visible(False)
+
     # ------------------------------------------------------------------ #
     # Bullet management                                                    #
     # ------------------------------------------------------------------ #
 
     def _fire_bullet(self):
         """
-        Create a new bullet and add it to the bullets group.
+        Create a new bullet at the ship's nose if under the bullet cap.
 
-        Respects the maximum number of bullets allowed on screen at once
-        as defined in settings.
+        Enforces the maximum number of simultaneous bullets defined in
+        settings so the player cannot flood the screen with projectiles.
         """
         if len(self.bullets) < self.settings.bullets_allowed:
             new_bullet = Bullet(self)
@@ -129,15 +185,13 @@ class AlienInvasion:
 
     def _update_bullets(self):
         """
-        Update bullet positions and remove off-screen bullets.
+        Move all bullets and cull any that have left the right edge.
 
-        After moving all bullets to the right, any bullet whose left edge
-        has passed the right side of the screen is removed. Then
-        bullet-alien collisions are checked.
+        After updating positions, delegates to collision detection to
+        check whether any bullet has struck an alien.
         """
         self.bullets.update()
 
-        # Remove bullets that have left the right edge of the screen.
         for bullet in self.bullets.copy():
             if bullet.rect.left >= self.settings.screen_width:
                 self.bullets.remove(bullet)
@@ -146,20 +200,34 @@ class AlienInvasion:
 
     def _check_bullet_alien_collisions(self):
         """
-        Detect bullet-alien collisions and respond.
+        Detect bullet-alien overlaps and respond.
 
-        Any bullet that overlaps an alien removes both objects. If the
-        entire fleet is destroyed, the bullets are cleared and a new fleet
-        is created.
+        Uses groupcollide() to simultaneously remove any colliding bullet
+        and alien. Awards points for every alien destroyed, accounting for
+        multi-alien hits from a single bullet. Updates the HUD score and
+        checks for a new high score after each collision batch.
+
+        If the entire fleet is wiped out, clears bullets, creates a new
+        fleet, increases game speed, and increments the level counter.
         """
         collisions = pygame.sprite.groupcollide(
             self.bullets, self.aliens, True, True
         )
 
+        if collisions:
+            for aliens_hit in collisions.values():
+                self.stats.score += self.settings.alien_points * len(aliens_hit)
+            self.sb.prep_score()
+            self.sb.check_high_score()
+
         if not self.aliens:
-            # All aliens destroyed — clear remaining bullets and spawn new fleet.
+            # Level cleared — speed up and spawn a new fleet.
             self.bullets.empty()
             self._create_fleet()
+            self.settings.increase_speed()
+
+            self.stats.level += 1
+            self.sb.prep_level()
 
     # ------------------------------------------------------------------ #
     # Alien fleet management                                               #
@@ -167,83 +235,97 @@ class AlienInvasion:
 
     def _create_fleet(self):
         """
-        Create a full fleet of aliens on the right side of the screen.
+        Build a full grid of aliens on the right side of the screen.
 
-        Aliens are arranged in a grid of columns and rows. The number of
-        columns and rows is calculated to fit the screen with one alien's
-        worth of margin on all sides. The fleet spawns off-screen to the
-        right so it scrolls into view naturally.
+        Uses the alien's own size plus a small fixed gap to calculate how
+        many rows and columns fit. The entire fleet block is then vertically
+        centered on the screen so aliens appear in the middle on spawn.
+        Delegates individual alien placement to _create_alien().
         """
         alien = Alien(self)
         alien_width = alien.rect.width
         alien_height = alien.rect.height
 
-        # Calculate how many columns and rows fit on screen.
-        available_x = self.settings.screen_width - 2 * alien_width
-        number_cols = available_x // (2 * alien_width)
+        # Generous gap so aliens have breathing room.
+        gap = 20
 
-        available_y = self.settings.screen_height - 3 * alien_height
-        number_rows = available_y // (2 * alien_height)
+        col_step = alien_width + gap
+        row_step = alien_height + gap
+
+        # Columns: leave one alien-width margin on each side.
+        available_x = self.settings.screen_width - 2 * alien_width
+        number_cols = available_x // col_step
+
+        # Rows: reserve 80px top and bottom so no alien spawns near an edge.
+        # Hard cap at 5 rows so the grid stays manageable.
+        margin_y = 80
+        available_y = self.settings.screen_height - 2 * margin_y
+        number_rows = min(available_y // row_step, 5)
+
+        # True vertical center: compute actual fleet height then offset.
+        fleet_height = number_rows * row_step - gap
+        top_offset = (self.settings.screen_height - fleet_height) // 2
 
         for col_number in range(number_cols):
             for row_number in range(number_rows):
-                self._create_alien(col_number, row_number)
+                self._create_alien(col_number, row_number,
+                                   col_step, row_step, top_offset)
 
-    def _create_alien(self, col_number, row_number):
+    def _create_alien(self, col_number, row_number,
+                      col_step, row_step, top_offset):
         """
-        Create an alien and place it in the fleet grid.
+        Place a single alien in the fleet grid.
 
-        Aliens are positioned starting from the right side of the screen.
-        Column 0 is closest to the right edge; higher column numbers are
-        further right (off-screen or near the edge), so the fleet enters
-        from the right.
+        Column 0 is closest to the right edge of the screen; higher column
+        numbers push aliens further right so the fleet enters from that side.
+        Rows are evenly spaced and the block is vertically centered via
+        top_offset.
 
         Args:
-            col_number (int): The column index (0 = rightmost visible column).
-            row_number (int): The row index (0 = top row).
+            col_number (int): Column index (0 = closest to right edge).
+            row_number (int): Row index (0 = top row).
+            col_step (int): Horizontal pixels between column starts.
+            row_step (int): Vertical pixels between row starts.
+            top_offset (int): Pixels from the top to start the first row.
         """
         alien = Alien(self)
         alien_width = alien.rect.width
-        alien_height = alien.rect.height
 
-        # Place the alien: columns grow toward the right edge of the screen.
+        # Columns grow rightward from the right edge of the screen.
         alien.x = (
             self.settings.screen_width
             - alien_width
-            - 2 * alien_width * col_number
+            - col_step * col_number
         )
         alien.rect.x = alien.x
 
-        # Rows are spaced from the top down.
-        alien.rect.y = alien_height + 2 * alien_height * row_number
+        # Rows start at top_offset so the fleet is vertically centered.
+        alien.rect.y = top_offset + row_step * row_number
 
         self.aliens.add(alien)
 
     def _update_aliens(self):
         """
-        Update positions of all aliens in the fleet.
+        Update all alien positions and check for loss conditions.
 
-        Checks whether any alien has reached a vertical screen edge; if so,
-        the entire fleet drops and reverses vertical direction. Then checks
-        whether any alien has collided with the ship or reached the left edge
-        (behind the ship), triggering a ship hit.
+        First checks whether any alien has hit a vertical screen edge so
+        the fleet can bounce. Then updates all alien positions. Finally
+        checks for alien-ship collision and aliens escaping the left edge.
         """
         self._check_fleet_edges()
         self.aliens.update()
 
-        # Check for alien-ship collision.
         if pygame.sprite.spritecollideany(self.ship, self.aliens):
             self._ship_hit()
 
-        # Check for aliens reaching the left edge (behind the ship).
         self._check_aliens_left()
 
     def _check_fleet_edges(self):
         """
-        Respond if any alien has reached the top or bottom screen edge.
+        Detect whether any alien has reached the top or bottom edge.
 
-        Calls _change_fleet_direction() to shift the fleet vertically and
-        reverse its vertical drift.
+        If so, calls _change_fleet_direction() to bounce the fleet and
+        advance it horizontally toward the ship.
         """
         for alien in self.aliens.sprites():
             if alien.check_edges():
@@ -252,11 +334,8 @@ class AlienInvasion:
 
     def _change_fleet_direction(self):
         """
-        Drop the entire fleet horizontally and reverse vertical direction.
+        Shift the entire fleet left.
 
-        Each alien is nudged inward (to the left) by fleet_drop_speed pixels,
-        then the fleet_direction flag is flipped so the vertical drift
-        alternates between down and up.
         """
         for alien in self.aliens.sprites():
             alien.rect.x -= self.settings.fleet_drop_speed
@@ -264,11 +343,9 @@ class AlienInvasion:
 
     def _check_aliens_left(self):
         """
-        Check whether any alien has reached the left edge of the screen.
+        Check whether any alien has passed the left edge of the screen.
 
-        If an alien passes the left boundary (i.e., behind the ship's
-        position), it counts the same as the ship being hit — a life is
-        lost and the game state is reset.
+        In the side-scrolling variant the left edge is behind the ship.
         """
         for alien in self.aliens.sprites():
             if alien.rect.right <= 0:
@@ -277,27 +354,27 @@ class AlienInvasion:
 
     def _ship_hit(self):
         """
-        Respond to the ship being hit by an alien or bypassed by one.
+        Respond to the ship being hit or an alien slipping past it.
 
-        Decrements ships_left. If lives remain, the current fleet and
-        bullets are cleared, a new fleet is created, and the ship is
-        re-centered. If no lives remain, the game is set to inactive.
+        Decrements ships_left and refreshes the lives HUD. If lives remain,
+        clears the screen, rebuilds the fleet, re-centers the ship, and
+        pauses briefly. When no lives remain, deactivates the game and
+        restores the mouse cursor so the player can click Play again.
         """
         if self.stats.ships_left > 0:
             self.stats.ships_left -= 1
+            self.sb.prep_ships()
 
-            # Clear aliens and bullets.
             self.aliens.empty()
             self.bullets.empty()
 
-            # Create a fresh fleet and re-center the ship.
             self._create_fleet()
             self.ship.center_ship()
 
-            # Pause briefly so the player can reorient.
             pygame.time.wait(500)
         else:
             self.stats.game_active = False
+            pygame.mouse.set_visible(True)
 
     # ------------------------------------------------------------------ #
     # Screen rendering                                                     #
@@ -305,10 +382,11 @@ class AlienInvasion:
 
     def _update_screen(self):
         """
-        Redraw the screen each frame and flip to the new image.
+        Redraw every visual element.
 
-        Fills the background, draws all bullets and aliens, draws the ship,
-        and shows a simple game-over message when the game is inactive.
+        Draw order: background → bullets → aliens → ship → HUD → Play
+        button (if inactive). The Play button is drawn last so it appears
+        on top of everything when the game is not running.
         """
         self.screen.fill(self.settings.bg_color)
 
@@ -318,22 +396,14 @@ class AlienInvasion:
         self.aliens.draw(self.screen)
         self.ship.blitme()
 
+        # HUD is always visible.
+        self.sb.show_score()
+
+        # Play button only shown when the game is inactive.
         if not self.stats.game_active:
-            self._draw_game_over()
+            self.play_button.draw_button()
 
         pygame.display.flip()
-
-    def _draw_game_over(self):
-        """
-        Display a 'Game Over' message in the center of the screen.
-
-        Uses pygame's default SysFont to render white text on the
-        grey background so the player knows the game has ended.
-        """
-        font = pygame.font.SysFont(None, 72)
-        msg = font.render("GAME OVER", True, (255, 0, 0))
-        msg_rect = msg.get_rect(center=self.screen.get_rect().center)
-        self.screen.blit(msg, msg_rect)
 
 
 if __name__ == '__main__':
