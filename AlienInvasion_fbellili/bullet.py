@@ -1,8 +1,9 @@
 """
 Program: Bullet Class
 Author: Farouk Bellili
-Purpose: Manage bullets moving horizontally.
-Starter Code: chapter12.
+Purpose: Manage bullets fired horizontally to the right from the ship's nose,
+         consistent with the side-scrolling game mechanics.
+Starter Code: chapter 14.
 Date: 2026-04-14
 """
 
